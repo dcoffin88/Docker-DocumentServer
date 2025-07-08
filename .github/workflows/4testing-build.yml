@@ -106,22 +106,6 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      - name: Prepare fonts cache
-        id: fonts
-        uses: actions/cache@v4
-        with:
-          path: fonts
-          key: fonts-${{ runner.os }}-v1
-
-      - name: Install fonts if not cached
-        if: steps.fonts.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update
-          echo "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" | sudo debconf-set-selections
-          sudo apt-get install -y ttf-mscorefonts-installer
-          mkdir -p fonts/msttcorefonts
-          cp -a /usr/share/fonts/truetype/msttcorefonts/* fonts/msttcorefonts/
-
       - name: Build 4testing
         id: build-ds
         env:
@@ -171,7 +155,7 @@ jobs:
 
           ### ==>> Build and push images at this step ###
 
-          docker buildx bake --sbom=true --provenance=mode=max -f docker-bake.hcl "${IMAGE}" --push
+          docker buildx bake -f docker-bake.hcl "${IMAGE}" --push
           echo "DONE: Build success"
 
           ### Set output for Zap scanner

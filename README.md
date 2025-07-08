@@ -1,3 +1,9 @@
+This build of ONLYOFFICE community edition simply has mobile editing enabled.
+
+It is intended to be NOT production-ready *use at your own risk. 
+
+Contact Ascensio System https://www.onlyoffice.com/contacts.aspx and buy an Enterprise license to support development.
+
 * [Overview](#overview)
 * [Functionality](#functionality)
 * [Recommended System Requirements](#recommended-system-requirements)
@@ -10,7 +16,6 @@
         + [Strengthening the Server Security](#strengthening-the-server-security)
         + [Installation of the SSL Certificates](#installation-of-the-ssl-certificates)
         + [Available Configuration Parameters](#available-configuration-parameters)
-* [Installing ONLYOFFICE Document Server integrated with Community and Mail Servers](#installing-onlyoffice-document-server-integrated-with-community-and-mail-servers)
 * [ONLYOFFICE Document Server ipv6 setup](#onlyoffice-document-server-ipv6-setup)
 * [Issues](#issues)
     - [Docker Issues](#docker-issues)
@@ -29,7 +34,6 @@ ONLYOFFICE Docs can be used as a part of [ONLYOFFICE DocSpace](https://www.onlyo
 ***Important*** Please update `docker-engine` to latest version (`20.10.21` as of writing this doc) before using it. We use `ubuntu:24.04` as base image and it older versions of docker have compatibility problems with it
 
 ## Functionality ##
-
 Take advantage of the powerful editors included in ONLYOFFICE Docs:
 
 * [ONLYOFFICE Document Editor](https://www.onlyoffice.com/document-editor.aspx)
@@ -60,7 +64,7 @@ ONLYOFFICE Docs offer support for plugins allowing you to add specific features 
 
 ## Running Docker Image
 
-    sudo docker run -i -t -d -p 80:80 onlyoffice/documentserver
+    sudo docker run -i -t -d -p 80:80 dcoffin88/documentserver
 
 Use this command if you wish to install ONLYOFFICE Document Server separately. To install ONLYOFFICE Document Server integrated with Community and Mail Servers, refer to the corresponding instructions below.
 
@@ -82,7 +86,7 @@ To get access to your data from outside the container, you need to mount the vol
         -v /app/onlyoffice/DocumentServer/lib:/var/lib/onlyoffice \
         -v /app/onlyoffice/DocumentServer/rabbitmq:/var/lib/rabbitmq \
         -v /app/onlyoffice/DocumentServer/redis:/var/lib/redis \
-        -v /app/onlyoffice/DocumentServer/db:/var/lib/postgresql  onlyoffice/documentserver
+        -v /app/onlyoffice/DocumentServer/db:/var/lib/postgresql  dcoffin88/documentserver
 
 Normally, you do not need to store container data because the container's operation does not depend on its state. Saving data will be useful:
 * For easy access to container data, such as logs
@@ -93,12 +97,12 @@ Normally, you do not need to store container data because the container's operat
 
 To change the port, use the -p command. E.g.: to make your portal accessible via port 8080 execute the following command:
 
-    sudo docker run -i -t -d -p 8080:80 onlyoffice/documentserver
+    sudo docker run -i -t -d -p 8080:80 dcoffin88/documentserver
 
 ### Running ONLYOFFICE Document Server using HTTPS
 
         sudo docker run -i -t -d -p 443:443 \
-        -v /app/onlyoffice/DocumentServer/data:/var/www/onlyoffice/Data  onlyoffice/documentserver
+        -v /app/onlyoffice/DocumentServer/data:/var/www/onlyoffice/Data  dcoffin88/documentserver
 
 Access to the ONLYOFFICE application can be secured using SSL so as to prevent unauthorized access. While a CA certified SSL certificate allows for verification of trust via the CA, a self-signed certificate can also provide an equal level of trust verification as long as each client takes some additional steps to verify the identity of your website. Below the instructions on achieving this are provided.
 
@@ -117,7 +121,7 @@ When using CA certified certificates (e.g. [Let's Encrypt](https://letsencrypt.o
 #### Using the automatically generated Let's Encrypt SSL Certificates
 
         sudo docker run -i -t -d -p 80:80 -p 443:443 \
-        -e LETS_ENCRYPT_DOMAIN=your_domain -e LETS_ENCRYPT_MAIL=your_mail  onlyoffice/documentserver
+        -e LETS_ENCRYPT_DOMAIN=your_domain -e LETS_ENCRYPT_MAIL=your_mail  dcoffin88/documentserver
 
 If you want to get and extend Let's Encrypt SSL Certificates automatically just set LETS_ENCRYPT_DOMAIN and LETS_ENCRYPT_MAIL variables.
 
@@ -244,120 +248,6 @@ After that, assuming you have docker-compose installed, execute the following co
 docker-compose up -d
 ```
 
-## Installing ONLYOFFICE Document Server as a part of ONLYOFFICE Workspace
-
-ONLYOFFICE Document Server is a part of ONLYOFFICE Workspace that comprises also Community Server, Mail Server, and Control Panel. To install them, follow these easy steps:
-
-**STEP 1**: Create the `onlyoffice` network.
-
-```bash
-docker network create --driver bridge onlyoffice
-```
-Then launch containers on it using the 'docker run --net onlyoffice' option:
-
-**STEP 2**: Install MySQL.
-
-Follow [these steps](#installing-mysql) to install MySQL server.
-
-**STEP 3**: Generate JWT Secret
-
-JWT secret defines the secret key to validate the JSON Web Token in the request to the **ONLYOFFICE Document Server**. You can specify it yourself or easily get it using the command:
-```
-JWT_SECRET=$(cat /dev/urandom | tr -dc A-Za-z0-9 | head -c 12);
-```
-
-**STEP 4**: Install ONLYOFFICE Document Server.
-
-```bash
-sudo docker run --net onlyoffice -i -t -d --restart=always --name onlyoffice-document-server \
- -e JWT_ENABLED=true \
- -e JWT_SECRET=${JWT_SECRET} \
- -e JWT_HEADER=AuthorizationJwt \
- -v /app/onlyoffice/DocumentServer/logs:/var/log/onlyoffice  \
- -v /app/onlyoffice/DocumentServer/data:/var/www/onlyoffice/Data  \
- -v /app/onlyoffice/DocumentServer/lib:/var/lib/onlyoffice \
- -v /app/onlyoffice/DocumentServer/db:/var/lib/postgresql \
- onlyoffice/documentserver
-```
-
-**STEP 5**: Install ONLYOFFICE Mail Server. 
-
-For the mail server correct work you need to specify its hostname 'yourdomain.com'.
-
-```bash
-sudo docker run --init --net onlyoffice --privileged -i -t -d --restart=always --name onlyoffice-mail-server -p 25:25 -p 143:143 -p 587:587 \
- -e MYSQL_SERVER=onlyoffice-mysql-server \
- -e MYSQL_SERVER_PORT=3306 \
- -e MYSQL_ROOT_USER=root \
- -e MYSQL_ROOT_PASSWD=my-secret-pw \
- -e MYSQL_SERVER_DB_NAME=onlyoffice_mailserver \
- -v /app/onlyoffice/MailServer/data:/var/vmail \
- -v /app/onlyoffice/MailServer/data/certs:/etc/pki/tls/mailserver \
- -v /app/onlyoffice/MailServer/logs:/var/log \
- -h yourdomain.com \
- onlyoffice/mailserver
-```
-
-The additional parameters for mail server are available [here](https://github.com/ONLYOFFICE/Docker-CommunityServer/blob/master/docker-compose.workspace_enterprise.yml#L87).
-
-To learn more, refer to the [ONLYOFFICE Mail Server documentation](https://github.com/ONLYOFFICE/Docker-MailServer "ONLYOFFICE Mail Server documentation").
-
-**STEP 6**: Install ONLYOFFICE Community Server
-
-```bash
-sudo docker run --net onlyoffice -i -t -d --privileged --restart=always --name onlyoffice-community-server -p 80:80 -p 443:443 -p 5222:5222 --cgroupns=host \
- -e MYSQL_SERVER_ROOT_PASSWORD=my-secret-pw \
- -e MYSQL_SERVER_DB_NAME=onlyoffice \
- -e MYSQL_SERVER_HOST=onlyoffice-mysql-server \
- -e MYSQL_SERVER_USER=onlyoffice_user \
- -e MYSQL_SERVER_PASS=onlyoffice_pass \
- 
- -e DOCUMENT_SERVER_PORT_80_TCP_ADDR=onlyoffice-document-server \
- -e DOCUMENT_SERVER_JWT_ENABLED=true \
- -e DOCUMENT_SERVER_JWT_SECRET=${JWT_SECRET} \
- -e DOCUMENT_SERVER_JWT_HEADER=AuthorizationJwt \
- 
- -e MAIL_SERVER_API_HOST=${MAIL_SERVER_IP} \
- -e MAIL_SERVER_DB_HOST=onlyoffice-mysql-server \
- -e MAIL_SERVER_DB_NAME=onlyoffice_mailserver \
- -e MAIL_SERVER_DB_PORT=3306 \
- -e MAIL_SERVER_DB_USER=root \
- -e MAIL_SERVER_DB_PASS=my-secret-pw \ 
- -e CONTROL_PANEL_PORT_80_TCP=80 \
- -e CONTROL_PANEL_PORT_80_TCP_ADDR=onlyoffice-control-panel \
- -v /app/onlyoffice/CommunityServer/data:/var/www/onlyoffice/Data \
- -v /app/onlyoffice/CommunityServer/logs:/var/log/onlyoffice \
- -v /app/onlyoffice/CommunityServer/letsencrypt:/etc/letsencrypt \
- -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
- onlyoffice/communityserver
-```
-
-Where `${MAIL_SERVER_IP}` is the IP address for **ONLYOFFICE Mail Server**. You can easily get it using the command:
-```
-MAIL_SERVER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' onlyoffice-mail-server)
-```
-
-Alternatively, you can use an automatic installation script to install ONLYOFFICE Workspace at once. For the mail server correct work you need to specify its hostname 'yourdomain.com'.
-
-**STEP 1**: Download the ONLYOFFICE Workspace Docker script file
-
-```bash
-wget https://download.onlyoffice.com/install/workspace-install.sh
-```
-
-**STEP 2**: Install ONLYOFFICE Workspace executing the following command:
-
-```bash
-workspace-install.sh -md yourdomain.com
-```
-
-Or, use [docker-compose](https://docs.docker.com/compose/install "docker-compose"). First you need to clone this [GitHub repository](https://github.com/ONLYOFFICE/Docker-CommunityServer/):
-
-```bash
-wget https://raw.githubusercontent.com/ONLYOFFICE/Docker-CommunityServer/master/docker-compose.groups.yml
-docker-compose up -d
-```
-
 ## ONLYOFFICE Document Server ipv6 setup
 
 (Works and is supported only for Linux hosts)
@@ -402,23 +292,21 @@ Please note, that both executing the script and disconnecting users may take a l
 
 ## Project Information
 
-Official website: [www.onlyoffice.com](https://www.onlyoffice.com/?utm_source=github&utm_medium=cpc&utm_campaign=GitHubDockerDS)
+Official website: [https://www.onlyoffice.com](https://www.onlyoffice.com/?utm_source=github&utm_medium=cpc&utm_campaign=GitHubDockerDS)
 
-Code repository: [github.com/ONLYOFFICE/DocumentServer](https://github.com/ONLYOFFICE/DocumentServer "https://github.com/ONLYOFFICE/DocumentServer")
+Code repository: [https://github.com/ONLYOFFICE/DocumentServer](https://github.com/ONLYOFFICE/DocumentServer "https://github.com/ONLYOFFICE/DocumentServer")
 
-Docker Image: [github.com/ONLYOFFICE/Docker-DocumentServer](https://github.com/ONLYOFFICE/Docker-DocumentServer "https://github.com/ONLYOFFICE/Docker-DocumentServer")
+Docker Image: [https://github.com/ONLYOFFICE/Docker-DocumentServer](https://github.com/ONLYOFFICE/Docker-DocumentServer "https://github.com/ONLYOFFICE/Docker-DocumentServer")
 
-License: [GNU AGPL v3.0](https://onlyo.co/38YZGJh)
+License: [GNU AGPL v3.0](https://help.onlyoffice.com/products/files/doceditor.aspx?fileid=4358397&doc=K0ZUdlVuQzQ0RFhhMzhZRVN4ZFIvaHlhUjN2eS9XMXpKR1M5WEppUk1Gcz0_IjQzNTgzOTci0 "GNU AGPL v3.0")
 
-Free version vs commercial builds comparison: https://github.com/ONLYOFFICE/DocumentServer#onlyoffice-docs-editions
+Free version vs commercial builds comparison: https://github.com/ONLYOFFICE/DocumentServer#onlyoffice-document-server-editions
+
+SaaS version: [https://www.onlyoffice.com/cloud-office.aspx](https://www.onlyoffice.com/cloud-office.aspx?utm_source=github&utm_medium=cpc&utm_campaign=GitHubDockerDS)
 
 ## User Feedback and Support
 
-If you face any issues or have questions about this image, visit our official forum: [forum.onlyoffice.com][1].
-
-You are also welcome to ask and answer ONLYOFFICE development questions on [Stack Overflow][2], as well as share your suggestions on [feedback.onlyoffice.com](https://feedback.onlyoffice.com/forums/966080-your-voice-matters).
-
-Join [our Discord community](https://discord.gg/Hcgtf5n4uF) for connecting with fellow developers.
+If you have any problems with or questions about this image, please visit our official forum to find answers to your questions: [forum.onlyoffice.com][1] or you can ask and answer ONLYOFFICE development questions on [Stack Overflow][2].
 
   [1]: https://forum.onlyoffice.com
   [2]: https://stackoverflow.com/questions/tagged/onlyoffice
