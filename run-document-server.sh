@@ -84,7 +84,7 @@ elif [[ -f ${SSL_CERTIFICATE_PATH} ]]; then
 fi
 
 if [[ -n $NODE_EXTRA_ENVIRONMENT ]]; then
-  sed -i "s|^environment=.*$|&,NODE_EXTRA_CA_CERTS=${NODE_EXTRA_ENVIRONMENT}|" /etc/supervisor/conf.d/*.conf
+  sed -i "s|^environment=.*$|&,NODE_EXTRA_CA_CERTS=${NODE_EXTRA_ENVIRONMENT}|" ${SUPERVISOR_CONF_DIR}/*.conf
 fi
 
 CA_CERTIFICATES_PATH=${CA_CERTIFICATES_PATH:-${SSL_CERTIFICATES_DIR}/ca-certificates.pem}
@@ -797,6 +797,8 @@ if [ ${ONLYOFFICE_DATA_CONTAINER} != "true" ]; then
     ( documentserver-pluginsmanager.sh -r false --update="${APP_DIR}/sdkjs-plugins/plugin-list-default.json" >/dev/null; echo "[pluginsmanager] Plugins initialization finished" >/proc/1/fd/1 ) &
   fi
 
+  [ "${ADMINPANEL_ENABLED:-false}" = "true" ] && sed -i 's,autostart=false,autostart=true,' ${SUPERVISOR_CONF_DIR}/ds-adminpanel.conf
+  [ "${EXAMPLE_ENABLED:-false}" = "true" ] && sed -i 's,autostart=false,autostart=true,' ${SUPERVISOR_CONF_DIR}/ds-example.conf
   service supervisor start
   
   # start cron to enable log rotating
