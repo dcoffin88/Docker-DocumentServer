@@ -585,16 +585,20 @@ create_oracle_tbl() {
 
 update_welcome_page() {
   WELCOME_PAGE="${APP_DIR}-example/welcome/docker.html"
+  ADMIN_DISABLED_PAGE="${APP_DIR}-example/welcome/admin-disabled.html"
+  EXAMPLE_DISABLED_PAGE="${APP_DIR}-example/welcome/example-disabled.html"
+  sed -Ei 's#sudo systemctl start ds-(adminpanel|example)#sudo docker exec $(sudo docker ps -q) supervisorctl start ds:\1#g' "$ADMIN_DISABLED_PAGE" "$EXAMPLE_DISABLED_PAGE"
+
   if [[ -e $WELCOME_PAGE ]]; then
     DOCKER_CONTAINER_ID=$(basename $(cat /proc/1/cpuset))
     (( ${#DOCKER_CONTAINER_ID} < 12 )) && DOCKER_CONTAINER_ID=$(hostname)
     if (( ${#DOCKER_CONTAINER_ID} >= 12 )); then
       if [[ -x $(command -v docker) ]]; then
         DOCKER_CONTAINER_NAME=$(docker inspect --format="{{.Name}}" $DOCKER_CONTAINER_ID)
-        sed 's/$(sudo docker ps -q)/'"${DOCKER_CONTAINER_NAME#/}"'/' -i $WELCOME_PAGE
+        sed 's/$(sudo docker ps -q)/'"${DOCKER_CONTAINER_NAME#/}"'/' -i $WELCOME_PAGE "$ADMIN_DISABLED_PAGE" "$EXAMPLE_DISABLED_PAGE"
         JWT_MESSAGE=$(echo $JWT_MESSAGE | sed 's/$(sudo docker ps -q)/'"${DOCKER_CONTAINER_NAME#/}"'/')
       else
-        sed 's/$(sudo docker ps -q)/'"${DOCKER_CONTAINER_ID::12}"'/' -i $WELCOME_PAGE
+        sed 's/$(sudo docker ps -q)/'"${DOCKER_CONTAINER_ID::12}"'/' -i $WELCOME_PAGE "$ADMIN_DISABLED_PAGE" "$EXAMPLE_DISABLED_PAGE"
         JWT_MESSAGE=$(echo $JWT_MESSAGE | sed 's/$(sudo docker ps -q)/'"${DOCKER_CONTAINER_ID::12}"'/')
       fi
     fi
