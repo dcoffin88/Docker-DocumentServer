@@ -84,7 +84,7 @@ jobs:
 
   build:
     name: "Build ${{ matrix.image }}-${{ matrix.edition }}:${{ matrix.platform }}"
-    runs-on: ${{ (matrix.platform == 'arm64') && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.runner }}
     needs: prepare
     strategy:
       fail-fast: false
@@ -92,6 +92,11 @@ jobs:
         image: ["documentserver"]
         edition: ${{ fromJSON(needs.prepare.outputs.editions) }}
         platform: ${{ fromJSON(needs.prepare.outputs.platforms) }}
+        include:
+          - platform: amd64
+            runner: ubuntu-latest
+          - platform: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout code 
         uses: actions/checkout@v4
