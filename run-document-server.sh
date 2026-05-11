@@ -129,7 +129,7 @@ ALLOW_PRIVATE_IP_ADDRESS=${ALLOW_PRIVATE_IP_ADDRESS:-false}
 GENERATE_FONTS=${GENERATE_FONTS:-true}
 
 [ -n "${PRODUCT_EDITION}" ] && _is_commercial=true || _is_commercial=false
-REDIS_AVAILABLE=${_is_commercial} RABBITMQ_AVAILABLE=${_is_commercial} PG_AVAILABLE=${_is_commercial} ADMINPANEL_AVAILABLE=${_is_commercial}
+REDIS_AVAILABLE=${_is_commercial} RABBITMQ_AVAILABLE=${_is_commercial} DB_AVAILABLE=${_is_commercial} ADMINPANEL_AVAILABLE=${_is_commercial}
 
 ONLYOFFICE_DEFAULT_CONFIG=${CONF_DIR}/local.json
 ONLYOFFICE_LOG4JS_CONFIG=${CONF_DIR}/log4js/production.json
@@ -161,7 +161,7 @@ read_setting(){
   METRICS_PORT="${METRICS_PORT:-8125}"
   METRICS_PREFIX="${METRICS_PREFIX:-.ds}"
 
-  if [ ${PG_AVAILABLE} = "true" ]; then
+  if [ ${DB_AVAILABLE} = "true" ]; then
     deprecated_var POSTGRESQL_SERVER_HOST DB_HOST
     deprecated_var POSTGRESQL_SERVER_PORT DB_PORT
     deprecated_var POSTGRESQL_SERVER_DB_NAME DB_NAME
@@ -717,7 +717,7 @@ if [ ${ONLYOFFICE_DATA_CONTAINER_HOST} = "localhost" ]; then
 
   update_ds_settings
 
-  if [ ${PG_AVAILABLE} = "true" ]; then
+  if [ ${DB_AVAILABLE} = "true" ]; then
     if [ $DB_HOST != "localhost" ]; then
       update_db_settings
       waiting_for_db
@@ -779,7 +779,7 @@ for i in ${LOCAL_SERVICES[@]}; do
   service $i start
 done
 
-if [ ${PG_AVAILABLE} = "true" ] && [ "${DB_TYPE}" = "postgres" ]; then
+if [ ${DB_AVAILABLE} = "true" ] && [ "${DB_TYPE}" = "postgres" ]; then
   PG_DB_EXISTS=$(PGPASSWORD="$DB_PWD" psql -h ${DB_HOST} -p${DB_PORT} -U "${DB_USER}" -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}';" 2>/dev/null)
   if [ ${PG_NEW_CLUSTER} = "true" ] || [ "${PG_DB_EXISTS}" != "1" ]; then
     create_postgresql_db
@@ -788,12 +788,12 @@ if [ ${PG_AVAILABLE} = "true" ] && [ "${DB_TYPE}" = "postgres" ]; then
 fi
 
 if [ ${ONLYOFFICE_DATA_CONTAINER} != "true" ]; then
-  [ ${PG_AVAILABLE} = "true" ] && waiting_for_db
+  [ ${DB_AVAILABLE} = "true" ] && waiting_for_db
   [ ${RABBITMQ_AVAILABLE} = "true" ] && waiting_for_amqp
   [ ${REDIS_AVAILABLE} = "true" ] && waiting_for_redis
 
   if [ "${IS_UPGRADE}" = "true" ]; then
-    upgrade_db_tbl
+    [ ${DB_AVAILABLE} = "true" ] && upgrade_db_tbl
     update_release_date
   fi
 
