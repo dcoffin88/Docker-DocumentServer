@@ -27,11 +27,6 @@ COPY fonts/ /usr/share/fonts/truetype/
 RUN echo "#!/bin/sh\nexit 101" > /usr/sbin/policy-rc.d && \
     apt-get -y update && \
     apt-get -yq install wget apt-transport-https gnupg locales lsb-release && \
-    wget -q -O /etc/apt/sources.list.d/mssql-release.list "https://packages.microsoft.com/config/ubuntu/$BASE_VERSION/prod.list" && \
-    wget -q -O /tmp/microsoft.asc https://packages.microsoft.com/keys/microsoft.asc && \
-    apt-key add /tmp/microsoft.asc && \
-    gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg < /tmp/microsoft.asc && \
-    apt-get -y update && \
     locale-gen en_US.UTF-8 && \
     echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | debconf-set-selections && \
     ACCEPT_EULA=Y apt-get -yq install \
@@ -42,9 +37,7 @@ RUN echo "#!/bin/sh\nexit 101" > /usr/sbin/policy-rc.d && \
         cron \
         curl \
         htop \
-        libaio1${PACKAGE_SUFFIX} \
         libasound2${PACKAGE_SUFFIX} \
-        libboost-regex-dev \
         libcairo2 \
         libcurl3-gnutls \
         libcurl4 \
@@ -55,8 +48,6 @@ RUN echo "#!/bin/sh\nexit 101" > /usr/sbin/policy-rc.d && \
         libxml2 \
         libxss1 \
         libxtst6 \
-        mssql-tools18 \
-        mysql-client \
         nano \
         net-tools \
         netcat-openbsd \
@@ -65,26 +56,17 @@ RUN echo "#!/bin/sh\nexit 101" > /usr/sbin/policy-rc.d && \
         sudo \
         supervisor \
         ttf-mscorefonts-installer \
-        unixodbc-dev \
         unzip \
         xvfb \
         xxd \
         zlib1g && \
     if [  $(find /usr/share/fonts/truetype/msttcorefonts -maxdepth 1 -type f -iname '*.ttf' | wc -l) -lt 30 ]; \
         then echo 'msttcorefonts failed to download'; exit 1; fi  && \
-    wget -O basic.zip ${OC_DOWNLOAD_URL}/instantclient-basic-linux.$(dpkg --print-architecture | sed 's/amd64/x64/')-${OC_FILE_SUFFIX}.zip && \
-    wget -O sqlplus.zip ${OC_DOWNLOAD_URL}/instantclient-sqlplus-linux.$(dpkg --print-architecture | sed 's/amd64/x64/')-${OC_FILE_SUFFIX}.zip && \
-    unzip -o basic.zip -d /usr/share && \
-    unzip -o sqlplus.zip -d /usr/share && \
-    rm -f basic.zip sqlplus.zip && \
-    mv /usr/share/instantclient_${OC_VER_DIR} /usr/share/instantclient && \
-    find /usr/lib /lib -name "libaio.so.1$PACKAGE_SUFFIX" -exec bash -c 'ln -sf "$0" "$(dirname "$0")/libaio.so.1"' {} \; && \
     rm -rf /var/lib/apt/lists/*
 
 COPY config/supervisor/supervisor /etc/init.d/
 COPY config/supervisor/ds/*.conf /etc/supervisor/conf.d/
 COPY run-document-server.sh /app/ds/run-document-server.sh
-COPY oracle/sqlplus /usr/bin/sqlplus
 
 EXPOSE 80 443
 
@@ -102,12 +84,28 @@ ENV COMPANY_NAME=$COMPANY_NAME \
     DS_DOCKER_INSTALLATION=true
 
 RUN if [ -n "${PRODUCT_EDITION}" ]; then \
+    wget -q -O /etc/apt/sources.list.d/mssql-release.list "https://packages.microsoft.com/config/ubuntu/$BASE_VERSION/prod.list" && \
+    wget -q -O /tmp/microsoft.asc https://packages.microsoft.com/keys/microsoft.asc && \
+    apt-key add /tmp/microsoft.asc && \
+    gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg < /tmp/microsoft.asc && \
     apt-get -y update && \
     ACCEPT_EULA=Y apt-get -yq install \
+        libaio1${PACKAGE_SUFFIX} \
+        libboost-regex-dev \
+        mssql-tools18 \
+        mysql-client \
+        unixodbc-dev \
         redis-server \
         postgresql postgresql-client \
         rabbitmq-server && \
     dpkg --configure -a && \
+    wget -O basic.zip ${OC_DOWNLOAD_URL}/instantclient-basic-linux.$(dpkg --print-architecture | sed 's/amd64/x64/')-${OC_FILE_SUFFIX}.zip && \
+    wget -O sqlplus.zip ${OC_DOWNLOAD_URL}/instantclient-sqlplus-linux.$(dpkg --print-architecture | sed 's/amd64/x64/')-${OC_FILE_SUFFIX}.zip && \
+    unzip -o basic.zip -d /usr/share && \
+    unzip -o sqlplus.zip -d /usr/share && \
+    rm -f basic.zip sqlplus.zip && \
+    mv /usr/share/instantclient_${OC_VER_DIR} /usr/share/instantclient && \
+    find /usr/lib /lib -name "libaio.so.1$PACKAGE_SUFFIX" -exec bash -c 'ln -sf "$0" "$(dirname "$0")/libaio.so.1"' {} \; && \
     sed -i "s/bind .*/bind 127.0.0.1/g" /etc/redis/redis.conf && \
     echo "SERVER_ADDITIONAL_ERL_ARGS=\"+S 1:1\"" | tee -a /etc/rabbitmq/rabbitmq-env.conf && \
     pg_conftool $PG_VERSION main set listen_addresses 'localhost' && \
@@ -147,5 +145,6 @@ VOLUME /var/log/$COMPANY_NAME /var/lib/$COMPANY_NAME /var/www/$COMPANY_NAME/Data
 ENTRYPOINT ["/app/ds/run-document-server.sh"]
 
 FROM documentserver-base AS documentserver-enterprise
+COPY oracle/sqlplus /usr/bin/sqlplus
 VOLUME /var/log/$COMPANY_NAME /var/lib/$COMPANY_NAME /var/www/$COMPANY_NAME/Data /var/lib/postgresql /var/lib/rabbitmq /var/lib/redis /usr/share/fonts/truetype/custom
 ENTRYPOINT ["/app/ds/run-document-server.sh"]
