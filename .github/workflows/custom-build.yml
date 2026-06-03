@@ -1,0 +1,215 @@
+name: Stable build & publish
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '00 22 * * 6'
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REPO: "dcoffin88"
+  COMPANY_NAME: "onlyoffice"
+  UPSTREAM_NAME: "onlyoffice"
+  PRODUCT_NAME: "documentserver"
+  UPSTREAM_REPO: "ONLYOFFICE/Docker-DocumentServer"
+  PATCHES: |
+    f92d351f926f7f07b5e8902decf2aa5a6cffbde8
+    c160a3170fe1a2021dc197003667d54c34b87bd2
+    1afe282ed19e3d09dff86031765f299f978e1c47
+  REGISTRY_URL: "https://hub.docker.com/v2/repositories"
+  HUB_URL: "https://hub.docker.com/layers"
+  
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    outputs:
+      TAG: ${{ steps.versions.outputs.TAG }}
+      PACKAGE_VERSION: ${{ steps.versions.outputs.PACKAGE_VERSION }}
+      skip_build: ${{ steps.versions.outputs.skip_build }}
+    steps:
+    # ------------------------------------------------------------------
+    # 0. Checkout your fork with full history (needed for cherry-pick)
+    # ------------------------------------------------------------------
+      - name: Checkout self
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # important for cherry-pick
+
+    # ------------------------------------------------------------------
+    # 1. Add upstream remote and sync master
+    # ------------------------------------------------------------------
+      - name: Sync master to upstream/master
+        run: |
+          set -eux
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream-origin https://github.com/${UPSTREAM_REPO}.git \
+            || git remote set-url upstream-origin https://github.com/${UPSTREAM_REPO}.git
+          
+          # Fetch upstream and your fork's master (for later restore)
+          git fetch upstream-origin master
+          git checkout master
+          # git merge upstream-origin/master --no-edit
+          # git restore --source=origin/master .github/workflows || true
+          
+          # Make local master EXACTLY match upstream/master
+          git reset --hard upstream-origin/master
+
+    # ------------------------------------------------------------------
+    # 2. Cherry-pick your custom commits (ignore if they already apply)
+    # ------------------------------------------------------------------
+      - name: Apply custom patches from local commits
+        run: |
+          set -eux
+          for patch in $PATCHES; do
+            if git cherry -v HEAD "$patch" | grep -q '^+'; then
+              echo "Cherry-picking $patch"
+              git cherry-pick -X theirs "$patch" || {
+                echo "::error::Conflict on $patch"
+                git cherry-pick --abort
+                exit 1
+              }
+            else
+              echo "Patch $patch already in master — skipping"
+            fi
+          done
+
+    # ------------------------------------------------------------------
+    # 3. Stage modified files (if any) & force-push back to fork
+    # ------------------------------------------------------------------
+      - name: Finalize and push
+        run: |
+          set -eux
+          
+          # Make sure we see the current state of your fork's master
+          git fetch origin master || true
+
+          # 1) Restore ALL workflow files to EXACTLY what your fork has right now
+          git restore --source=origin/master .github/workflows || true
+
+          # 2) Stage everything and amend the last commit (if there are changes)
+          git add -A
+          git diff --cached --quiet || git commit --amend --no-edit
+          
+          # 3) Push updated master back to your fork
+          git push origin master --force-with-lease
+
+    # ------------------------------------------------------------------
+    # 4. Compare upstream and published versions
+    # ------------------------------------------------------------------
+      - name: Compare upstream vs published and set PACKAGE_VERSION
+        id: versions
+        run: |
+          set -eux
+
+          # === Get latest upstream published version from Docker Hub ===
+          upstream_digest="$(curl -s "${REGISTRY_URL}/${UPSTREAM_NAME}/${PRODUCT_NAME}/tags?name=latest" \
+            | jq -r '.results[] | select(.name == "latest") | .digest')"
+            
+          upstream_digest="${upstream_digest:-null}"
+            
+          if [[ "$upstream_digest" == "null" || -z "$upstream_digest" ]]; then
+            latest_upstream="0.0.0.0"
+          else
+            latest_upstream=$(curl -s "${REGISTRY_URL}/${UPSTREAM_NAME}/${PRODUCT_NAME}/tags?page_size=100" \
+              -H 'Content-Type: application/json' \
+              | jq -r --arg digest "$upstream_digest" '.results[] | select(.digest == $digest) | .name' \
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V | tail -n1 || echo "0.0.0.0")
+          fi
+          echo "Latest upstream tag: $latest_upstream"
+
+          # === Get latest downstream published version from Docker Hub ===
+          downstream_digest="$(curl -s "${REGISTRY_URL}/${REPO}/${PRODUCT_NAME}/tags?name=latest" \
+            | jq -r '.results[] | select(.name == "latest") | .digest')"
+            
+          downstream_digest="${downstream_digest:-null}"
+          
+          if [[ "$downstream_digest" == "null" || -z "$downstream_digest" ]]; then
+            latest_downstream="0.0.0.0"
+          else
+            latest_downstream=$(curl -s "${REGISTRY_URL}/${REPO}/${PRODUCT_NAME}/tags?page_size=100" \
+              -H 'Content-Type: application/json' \
+              | jq -r --arg digest "$downstream_digest" '.results[] | select(.digest == $digest) | .name' \
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V | tail -n1 || echo "0.0.0.0")
+          fi
+          echo "Latest downstream tag: $latest_downstream"
+
+          # === Compare and set output only if upstream is newer ===
+          if dpkg --compare-versions "$latest_upstream" le "$latest_downstream"; then
+            echo "Upstream version ($latest_upstream) is not newer than published ($latest_downstream). Exiting."
+            echo "skip_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "Proceeding with upstream version: $latest_upstream"
+            raw=$(curl -s "${REGISTRY_URL}/${UPSTREAM_NAME}/${PRODUCT_NAME}/tags/latest" \
+              | jq -r '.images[] | select(.architecture == "amd64") | .digest')
+            digest=$(echo "$raw" | sed 's/^sha256:/sha256-/')
+            digest_url="${HUB_URL}/${UPSTREAM_NAME}/${PRODUCT_NAME}/latest/images/${digest}"
+            PACKAGE_VERSION=$(curl -s "$digest_url" \
+              | grep -Po 'ARG PACKAGE_VERSION=\K[^\s<"]+' \
+              | sed -e 's/[\\"]$//' -e 's/-/./')
+            echo "PACKAGE_VERSION=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
+            echo "TAG=${latest_upstream}" >> $GITHUB_OUTPUT
+            echo "skip_build=false" >> $GITHUB_OUTPUT
+          fi
+
+    # ------------------------------------------------------------------
+    # 5. Set up Docker Buildx + QEMU
+    # ------------------------------------------------------------------
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+          
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+    # ------------------------------------------------------------------
+    # 6. Build & push multi-arch image (amd64 + arm64)
+    # ------------------------------------------------------------------
+      - name: Build & push image
+        if: steps.versions.outputs.skip_build == 'false'
+        env:
+          REPO:            ${{ env.REPO }}
+          COMPANY_NAME:    ${{ env.COMPANY_NAME }}
+          PRODUCT_NAME:    ${{ env.PRODUCT_NAME }}
+          TAG:             ${{ steps.versions.outputs.TAG }}
+          PACKAGE_VERSION: ""
+          TARGETARCH:      amd64
+          PACKAGE_BASEURL: http://download.onlyoffice.com/install/documentserver/linux
+          PRODUCT_EDITION: ""
+          LATEST: true
+        run: |
+          set -eux
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -t docker.io/${REPO}/${PRODUCT_NAME}:${TAG} \
+            -t docker.io/${REPO}/${PRODUCT_NAME}:latest \
+            --build-arg PACKAGE_BASEURL=${PACKAGE_BASEURL} \
+            --push \
+            .
+
+    # ------------------------------------------------------------------
+    # 7. Done
+    # ------------------------------------------------------------------
+      - name: Build complete
+        run: echo "Built and pushed documentserver:${{ env.TAG }}"
