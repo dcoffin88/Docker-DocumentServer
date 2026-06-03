@@ -1,6 +1,6 @@
 ### This workflow setup instance then build and push images ###
 name: Multi-arch build stable
-run-name: ${{ inputs.tag }} (${{ inputs.release_number }}) — ${{ inputs.community && 'CE ' || '' }}${{ inputs.enterprise && 'EE ' || '' }}${{ inputs.developer && 'DE' || '' }}
+run-name: ${{ inputs.tag }} (${{ inputs.release_number }}) — ${{ inputs.community && 'CE ' || '' }}${{ inputs.enterprise && 'EE DE' || '' }}
 
 on:
   workflow_dispatch:
@@ -25,11 +25,7 @@ on:
         default: true
       enterprise:
         type: boolean
-        description: 'Release Enterprise Edition'
-        default: true
-      developer:
-        type: boolean
-        description: 'Release Developer Edition'
+        description: 'Release Enterprise editions (-ee and -de)'
         default: true
 
 env:
@@ -53,16 +49,13 @@ jobs:
         env:
           INPUT_C: ${{ github.event.inputs.community }}
           INPUT_E: ${{ github.event.inputs.enterprise }}
-          INPUT_D: ${{ github.event.inputs.developer }}
         run: |
           set -eux
           editions=$(jq -nc \
             --argjson c "$INPUT_C" \
             --argjson e "$INPUT_E" \
-            --argjson d "$INPUT_D" \
             '[ if $c then "" else empty end,
-               if $e then "-ee" else empty end,
-               if $d then "-de" else empty end ]')
+               if $e then ("-ee", "-de") else empty end ]')
           editions_ucs=$(echo "$editions" | jq -c 'map(select(. != "-de"))')
           echo "editions=$editions" >> "$GITHUB_OUTPUT"
           echo "editions_ucs=$editions_ucs" >> "$GITHUB_OUTPUT"
